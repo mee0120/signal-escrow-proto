@@ -1,0 +1,67 @@
+{
+  "contractName": "SignalEscrowToken",
+  "constructorInputs": [
+    { "name": "subscriberPkh", "type": "bytes20" },
+    { "name": "providerPkh", "type": "bytes20" },
+    { "name": "tokenCategory", "type": "bytes32" },
+    { "name": "pricePerSignal", "type": "int" },
+    { "name": "minInterval", "type": "int" },
+    { "name": "maxFee", "type": "int" },
+    { "name": "dust", "type": "int" }
+  ],
+  "abi": [
+    {
+      "name": "charge",
+      "inputs": [
+        { "name": "providerPk", "type": "pubkey" },
+        { "name": "providerSig", "type": "sig" },
+        { "name": "signalHash", "type": "bytes32" }
+      ]
+    },
+    {
+      "name": "refund",
+      "inputs": [
+        { "name": "subscriberPk", "type": "pubkey" },
+        { "name": "subscriberSig", "type": "sig" }
+      ]
+    }
+  ],
+  "bytecode": "OP_7 OP_PICK OP_0 OP_NUMEQUAL OP_IF OP_10 OP_ROLL OP_SIZE 20 OP_EQUALVERIFY OP_9 OP_PICK OP_HASH160 OP_3 OP_PICK OP_EQUALVERIFY OP_10 OP_ROLL OP_10 OP_ROLL OP_CHECKSIGVERIFY OP_5 OP_ROLL OP_CHECKSEQUENCEVERIFY OP_DROP OP_INPUTINDEX OP_DUP OP_UTXOTOKENCATEGORY OP_5 OP_PICK OP_EQUALVERIFY OP_DUP OP_UTXOTOKENAMOUNT OP_0 OP_OUTPUTBYTECODE 76a914 OP_6 OP_ROLL OP_CAT 88ac OP_CAT OP_EQUALVERIFY OP_0 OP_OUTPUTTOKENCATEGORY OP_5 OP_PICK OP_EQUALVERIFY OP_0 OP_OUTPUTTOKENAMOUNT OP_6 OP_PICK OP_NUMEQUALVERIFY OP_0 OP_OUTPUTVALUE OP_8 OP_PICK OP_LESSTHANOREQUAL OP_VERIFY OP_1 OP_OUTPUTBYTECODE OP_2 OP_PICK OP_UTXOBYTECODE OP_EQUALVERIFY OP_1 OP_OUTPUTTOKENCATEGORY OP_5 OP_ROLL OP_EQUALVERIFY OP_1 OP_OUTPUTTOKENAMOUNT OP_SWAP OP_5 OP_ROLL OP_SUB OP_NUMEQUALVERIFY OP_1 OP_OUTPUTVALUE OP_SWAP OP_UTXOVALUE OP_5 OP_ROLL OP_SUB OP_4 OP_ROLL OP_SUB OP_GREATERTHANOREQUAL OP_VERIFY OP_2 OP_OUTPUTBYTECODE 6a 20 OP_3 OP_ROLL OP_CAT OP_CAT OP_EQUALVERIFY OP_2 OP_OUTPUTVALUE OP_0 OP_NUMEQUALVERIFY OP_TXINPUTCOUNT OP_1 OP_NUMEQUALVERIFY OP_TXOUTPUTCOUNT OP_3 OP_NUMEQUAL OP_NIP OP_NIP OP_ELSE OP_7 OP_ROLL OP_1 OP_NUMEQUALVERIFY OP_7 OP_PICK OP_HASH160 OP_EQUALVERIFY OP_7 OP_ROLL OP_7 OP_ROLL OP_CHECKSIGVERIFY OP_2DROP OP_2DROP OP_2DROP OP_1 OP_ENDIF",
+  "source": "pragma cashscript ^0.14.0;\n\n// Pay-per-signal escrow, paid in a fungible CashToken (e.g. PUSD).\n// The escrow UTXO holds the subscriber's tokens plus a little BCH for miner fees.\ncontract SignalEscrowToken(\n    bytes20 subscriberPkh,\n    bytes20 providerPkh,\n    bytes32 tokenCategory,  // token id of the stablecoin, e.g. PUSD\n    int pricePerSignal,     // token units paid per signal\n    int minInterval,        // relative timelock in blocks between two charges\n    int maxFee,             // highest miner fee in satoshis taken from the escrow's BCH\n    int dust                // BCH that must travel with each token output\n) {\n    function charge(pubkey providerPk, sig providerSig, bytes32 signalHash) {\n        require(hash160(providerPk) == providerPkh);\n        require(checkSig(providerSig, providerPk));\n        require(this.age >= minInterval);\n\n        int i = this.activeInputIndex;\n        require(tx.inputs[i].tokenCategory == tokenCategory);\n        int tokensIn = tx.inputs[i].tokenAmount;\n\n        // Output 0: exactly the price, in the right token, to the provider.\n        require(tx.outputs[0].lockingBytecode == new LockingBytecodeP2PKH(providerPkh));\n        require(tx.outputs[0].tokenCategory == tokenCategory);\n        require(tx.outputs[0].tokenAmount == pricePerSignal);\n        require(tx.outputs[0].value <= dust);\n\n        // Output 1: every remaining token and the remaining BCH go back to this contract.\n        require(tx.outputs[1].lockingBytecode == tx.inputs[i].lockingBytecode);\n        require(tx.outputs[1].tokenCategory == tokenCategory);\n        require(tx.outputs[1].tokenAmount == tokensIn - pricePerSignal);\n        require(tx.outputs[1].value >= tx.inputs[i].value - dust - maxFee);\n\n        // Output 2: the signal hash, on chain.\n        require(tx.outputs[2].lockingBytecode == new LockingBytecodeNullData([signalHash]));\n        require(tx.outputs[2].value == 0);\n\n        require(tx.inputs.length == 1);\n        require(tx.outputs.length == 3);\n    }\n\n    function refund(pubkey subscriberPk, sig subscriberSig) {\n        require(hash160(subscriberPk) == subscriberPkh);\n        require(checkSig(subscriberSig, subscriberPk));\n    }\n}\n",
+  "fingerprint": "a2c916b4d9d096764f39b385f68f75cd4fa26255304e1bacc97e336d2e83c925",
+  "debug": {
+    "bytecode": "5779009c635a7a820120885979a95379885a7a5a7aad557ab275c076ce55798876d000cd0376a914567a7e0288ac7e8800d155798800d356799d00cc5879a16951cd5279c78851d1557a8851d37c557a949d51cc7cc6557a94547a94a26952cd016a0120537a7e7e8852cc009dc3519dc4539c777767577a519d5779a988577a577aad6d6d6d5168",
+    "sourceMap": "14:4:41:5;;;;;:56:14:74;;;;;15:24:15:34;;:16::35:1;:39::50:0;;:8::52:1;16:25:16:36:0;;:38::48;;:8::51:1;17:28:17:39:0;;:8::41:1;;19:16:19:37:0;20:26:20:27;:16::42:1;:46::59:0;;:8::61:1;21:33:21:34:0;:23::47:1;24:27:24:28:0;:16::45:1;:49::86:0;:74::85;;:49::86:1;;;:8::88;25:27:25:28:0;:16::43:1;:47::60:0;;:8::62:1;26:27:26:28:0;:16::41:1;:45::59:0;;:8::61:1;27:27:27:28:0;:16::35:1;:39::43:0;;:16:::1;:8::45;30:27:30:28:0;:16::45:1;:59::60:0;;:49::77:1;:8::79;31:27:31:28:0;:16::43:1;:47::60:0;;:8::62:1;32:27:32:28:0;:16::41:1;:45::53:0;:56::70;;:45:::1;:8::72;33:27:33:28:0;:16::35:1;:49::50:0;:39::57:1;:60::64:0;;:39:::1;:67::73:0;;:39:::1;:16;:8::75;36:27:36:28:0;:16::45:1;:49::90:0;:78::88;;;::::1;;:8::92;37:27:37:28:0;:16::35:1;:39::40:0;:8::42:1;39:16:39:32:0;:36::37;:8::39:1;40:16:40:33:0;:37::38;:8::40:1;14:76:41:5;;:4;43::46::0;;;;44:24:44:36;;:16::37:1;:8::56;45:25:45:38:0;;:40::52;;:8::55:1;43:60:46:5;;;;5:0:47:1",
+    "logs": [],
+    "requires": [
+      { "ip": 22, "line": 15 },
+      { "ip": 27, "line": 16 },
+      { "ip": 30, "line": 17 },
+      { "ip": 37, "line": 20 },
+      { "ip": 48, "line": 24 },
+      { "ip": 53, "line": 25 },
+      { "ip": 58, "line": 26 },
+      { "ip": 64, "line": 27 },
+      { "ip": 70, "line": 30 },
+      { "ip": 75, "line": 31 },
+      { "ip": 82, "line": 32 },
+      { "ip": 94, "line": 33 },
+      { "ip": 103, "line": 36 },
+      { "ip": 107, "line": 37 },
+      { "ip": 110, "line": 39 },
+      { "ip": 114, "line": 40 },
+      { "ip": 124, "line": 44 },
+      { "ip": 129, "line": 45 }
+    ],
+    "sourceTags": "5:9:pv;107:108:sc"
+  },
+  "compiler": {
+    "name": "cashc",
+    "version": "0.14.0",
+    "options": {
+      "enforceFunctionParameterTypes": true,
+      "enforceLocktimeGuard": true
+    }
+  },
+  "updatedAt": "2026-10-28T10:43:22.303Z"
+}

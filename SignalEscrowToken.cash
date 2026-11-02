@@ -1,0 +1,47 @@
+pragma cashscript ^0.14.0;
+
+// Pay-per-signal escrow, paid in a fungible CashToken (e.g. PUSD).
+// The escrow UTXO holds the subscriber's tokens plus a little BCH for miner fees.
+contract SignalEscrowToken(
+    bytes20 subscriberPkh,
+    bytes20 providerPkh,
+    bytes32 tokenCategory,  // token id of the stablecoin, e.g. PUSD
+    int pricePerSignal,     // token units paid per signal
+    int minInterval,        // relative timelock in blocks between two charges
+    int maxFee,             // highest miner fee in satoshis taken from the escrow's BCH
+    int dust                // BCH that must travel with each token output
+) {
+    function charge(pubkey providerPk, sig providerSig, bytes32 signalHash) {
+        require(hash160(providerPk) == providerPkh);
+        require(checkSig(providerSig, providerPk));
+        require(this.age >= minInterval);
+
+        int i = this.activeInputIndex;
+        require(tx.inputs[i].tokenCategory == tokenCategory);
+        int tokensIn = tx.inputs[i].tokenAmount;
+
+        // Output 0: exactly the price, in the right token, to the provider.
+        require(tx.outputs[0].lockingBytecode == new LockingBytecodeP2PKH(providerPkh));
+        require(tx.outputs[0].tokenCategory == tokenCategory);
+        require(tx.outputs[0].tokenAmount == pricePerSignal);
+        require(tx.outputs[0].value <= dust);
+
+        // Output 1: every remaining token and the remaining BCH go back to this contract.
+        require(tx.outputs[1].lockingBytecode == tx.inputs[i].lockingBytecode);
+        require(tx.outputs[1].tokenCategory == tokenCategory);
+        require(tx.outputs[1].tokenAmount == tokensIn - pricePerSignal);
+        require(tx.outputs[1].value >= tx.inputs[i].value - dust - maxFee);
+
+        // Output 2: the signal hash, on chain.
+        require(tx.outputs[2].lockingBytecode == new LockingBytecodeNullData([signalHash]));
+        require(tx.outputs[2].value == 0);
+
+        require(tx.inputs.length == 1);
+        require(tx.outputs.length == 3);
+    }
+
+    function refund(pubkey subscriberPk, sig subscriberSig) {
+        require(hash160(subscriberPk) == subscriberPkh);
+        require(checkSig(subscriberSig, subscriberPk));
+    }
+}
