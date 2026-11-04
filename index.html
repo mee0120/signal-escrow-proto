@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SignalEscrow prototype</title>
+<meta name="description" content="Pre-hackathon prototype of SignalEscrow: pay-per-signal subscriptions enforced by a Bitcoin Cash covenant, tested on chipnet on 2026-10-28.">
+<style>
+:root{
+  --bg:#f7f7f4;--panel:#fff;--ink:#17201c;--muted:#5f6b66;--line:#e2e4de;
+  --brand:#0a7a52;--brand-soft:#e5f3ec;--bad:#b3261e;--bad-soft:#fbe9e7;--code:#f0f2ee;
+  font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#111614;--panel:#18201d;--ink:#e6ece9;--muted:#9aa8a2;--line:#2a3430;
+  --brand:#3fcf94;--brand-soft:#16352a;--bad:#ff8a80;--bad-soft:#3a1f1d;--code:#202a26;
+}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);line-height:1.55}
+a{color:var(--brand)}
+.wrap{max-width:880px;margin:0 auto;padding:32px 16px 56px}
+.tag{display:inline-block;font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;
+  background:var(--brand-soft);color:var(--brand);padding:3px 10px;border-radius:999px}
+h1{font-size:34px;line-height:1.15;margin:12px 0 8px;letter-spacing:-.02em}
+h2{font-size:20px;margin:40px 0 12px}
+.lead{font-size:18px;color:var(--muted);margin:0 0 16px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px 20px}
+.flow{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.flow .card b{display:block;margin-bottom:4px}
+.flow .card{font-size:14px;color:var(--muted)}
+.flow .card b{color:var(--ink);font-size:15px}
+.steps{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+.step{display:grid;grid-template-columns:34px 1fr auto;gap:12px;align-items:start}
+.num{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:14px;
+  background:var(--brand-soft);color:var(--brand)}
+.step.rej .num{background:var(--bad-soft);color:var(--bad)}
+.step h3{margin:2px 0 2px;font-size:16px}
+.step p{margin:0;color:var(--muted);font-size:14px}
+.res{font-size:12px;font-weight:700;padding:3px 9px;border-radius:999px;white-space:nowrap;background:var(--brand-soft);color:var(--brand)}
+.step.rej .res{background:var(--bad-soft);color:var(--bad)}
+code,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px}
+code{background:var(--code);padding:1px 5px;border-radius:5px;word-break:break-all}
+table{width:100%;border-collapse:collapse;font-size:14px}
+td,th{text-align:left;padding:9px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+.verify input{width:100%;font:inherit;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:var(--bg);color:var(--ink)}
+.verify .out{margin-top:10px;font-size:14px}
+.ok{color:var(--brand);font-weight:700}.no{color:var(--bad);font-weight:700}
+.meta{font-size:13px;color:var(--muted)}
+.links{display:flex;flex-wrap:wrap;gap:10px;margin-top:6px}
+.btn{display:inline-block;padding:8px 14px;border-radius:9px;border:1px solid var(--line);background:var(--panel);text-decoration:none;font-size:14px;font-weight:600}
+.btn.primary{background:var(--brand);border-color:var(--brand);color:#fff}
+@media (prefers-color-scheme:dark){.btn.primary{color:#0b1712}}
+@media (max-width:640px){
+  h1{font-size:27px}.flow{grid-template-columns:1fr}
+  .step{grid-template-columns:34px 1fr}.step .res{grid-column:2;justify-self:start}
+  .hide-sm{display:none}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <span class="tag">Pre-hackathon prototype · chipnet · 2026-10-28</span>
+  <h1>SignalEscrow: pay per signal, enforced by Bitcoin Cash</h1>
+  <p class="lead">A subscriber locks BCH in a covenant. The signal provider can take a fixed price, at most once per interval, and only by publishing the signal's hash on chain. The subscriber can take everything back at any time. No server holds the money.</p>
+  <div class="links">
+    <a class="btn primary" href="https://github.com/mee0120/signal-escrow-proto">Source code</a>
+    <a class="btn" href="https://chipnet.imaginary.cash/address/bchtest:pdsr3y2ymn48a4kkar82ydfwzgvr3ggtv9glqpe75h4t7e4n9rgsy2t5zrkmc">Escrow on the chipnet explorer</a>
+  </div>
+  <p class="meta" style="margin-top:14px">This page shows the state of the project <b>before BCH BLAZE 2026</b>: two contracts, tests and a command-line run on chipnet. It has no app and no wallet connection yet. Work done during BLAZE is published separately.</p>
+
+  <h2>How it works</h2>
+  <div class="flow">
+    <div class="card"><b>1. Deposit</b>The subscriber sends BCH to the escrow address. Price, interval and both parties are fixed in the contract.</div>
+    <div class="card"><b>2. Charge</b>Once per interval, the provider takes exactly the price and writes the signal's sha256 into the same transaction.</div>
+    <div class="card"><b>3. Leave anytime</b>The subscriber's signature alone returns everything that is left.</div>
+  </div>
+
+  <h2>Live run on chipnet</h2>
+  <p class="meta">Settings: price 10,000 sats · interval 6 blocks · max fee 2,000 sats. Rejections came from the network itself, not from the app.</p>
+  <ol class="steps card" style="padding:18px 20px">
+    <li class="step">
+      <span class="num">1</span>
+      <div><h3>Subscriber deposits 50,000 sats</h3>
+        <p><a class="mono" href="https://chipnet.imaginary.cash/tx/978f22fc35a516bba39896734dea15d1dc9683d86a3314e8761b0261717df420">978f22fc…f420</a></p></div>
+      <span class="res">accepted</span>
+    </li>
+    <li class="step rej">
+      <span class="num">2</span>
+      <div><h3>Provider tries to charge before 6 blocks</h3>
+        <p>The network refuses it: <code>non-BIP68-final</code></p></div>
+      <span class="res">rejected</span>
+    </li>
+    <li class="step">
+      <span class="num">3</span>
+      <div><h3>Provider charges for the signal "BUY ETH"</h3>
+        <p>10,000 sats to the provider, 39,000 back into the escrow, the signal hash in OP_RETURN.<br>
+        <a class="mono" href="https://chipnet.imaginary.cash/tx/45dac64bd15004fe40a1c4ec3fe3423134814a070a0f0a5969cc71c62aacdf3b">45dac64b…df3b</a></p></div>
+      <span class="res">accepted</span>
+    </li>
+    <li class="step rej">
+      <span class="num">4</span>
+      <div><h3>Provider tries a second charge ("SELL ETH") right away</h3>
+        <p>Refused again: the interval restarts with every charge.</p></div>
+      <span class="res">rejected</span>
+    </li>
+    <li class="step">
+      <span class="num">5</span>
+      <div><h3>Subscriber takes the rest back</h3>
+        <p>Escrow emptied, 38,000 sats returned with the subscriber's signature only.<br>
+        <a class="mono" href="https://chipnet.imaginary.cash/tx/92fee9c392aff02596a907f811e8731e10b082ef77b2a163dc60ed426d7f93eb">92fee9c3…93eb</a></p></div>
+      <span class="res">accepted</span>
+    </li>
+  </ol>
+
+  <h2>Check a signal yourself</h2>
+  <div class="card verify">
+    <p class="meta" style="margin-top:0">Type a signal. Its sha256 is computed in your browser and compared with the hash stored in charge transaction 3.</p>
+    <input id="sig" value="BUY ETH" aria-label="Signal text" autocomplete="off">
+    <div class="out">sha256: <code id="hash">…</code><br><span id="verdict"></span></div>
+    <p class="meta" style="margin-bottom:0">Stored on chain: <code>2f9d7cdb0021a365f6b9911ec063c0a06860fcddc2fb15f909d3b399be404374</code></p>
+  </div>
+
+  <h2>Rules enforced by the contract</h2>
+  <div class="card" style="padding:6px 12px">
+  <table>
+    <tr><th>Rule</th><th class="hide-sm">How</th></tr>
+    <tr><td>Only the provider can charge</td><td class="hide-sm">provider pubkey hash + signature</td></tr>
+    <tr><td>Exact price, paid to the provider</td><td class="hide-sm">checks <code>tx.outputs[0]</code> locking bytecode and value</td></tr>
+    <tr><td>At most one charge per interval</td><td class="hide-sm">relative timelock <code>this.age &gt;= minInterval</code> (BIP68)</td></tr>
+    <tr><td>The rest stays in the same escrow</td><td class="hide-sm"><code>tx.outputs[1]</code> must be the same contract, minus at most <code>maxFee</code></td></tr>
+    <tr><td>Every charge publishes the signal</td><td class="hide-sm"><code>tx.outputs[2]</code> must be OP_RETURN with a 32-byte hash</td></tr>
+    <tr><td>Nothing else is paid out</td><td class="hide-sm">exactly 3 outputs</td></tr>
+    <tr><td>Subscriber can always leave</td><td class="hide-sm"><code>refund</code> needs only the subscriber's signature</td></tr>
+  </table>
+  </div>
+  <p class="meta">A second contract, <code>SignalEscrowToken.cash</code>, does the same with a fungible CashToken (for example the PUSD stablecoin). Tests: 12/12 for BCH and 8/8 for the token version on the CashScript mock network.</p>
+</div>
+<script>
+const target='2f9d7cdb0021a365f6b9911ec063c0a06860fcddc2fb15f909d3b399be404374';
+const input=document.getElementById('sig'),out=document.getElementById('hash'),v=document.getElementById('verdict');
+async function run(){
+  if(!crypto.subtle){out.textContent='(needs a secure context)';return;}
+  const buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(input.value));
+  const h=[...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,'0')).join('');
+  out.textContent=h;
+  v.innerHTML=h===target?'<span class="ok">✓ Matches the signal published in transaction 3</span>':'<span class="no">✗ Does not match: the provider cannot swap in a different signal afterwards</span>';
+}
+input.addEventListener('input',run);run();
+</script>
+</body>
+</html>
